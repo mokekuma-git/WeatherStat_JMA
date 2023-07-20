@@ -1,0 +1,12 @@
+*~
+.vscode
+
+__pycache__
+*.py[cod]
+*$py.class
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
