@@ -1,6 +1,9 @@
 *~
 .vscode
 
+# Download results
+downloads
+
 __pycache__
 *.py[cod]
 *$py.class

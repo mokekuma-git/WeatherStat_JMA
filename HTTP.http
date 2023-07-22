@@ -2,3 +2,15 @@ POST https://www.data.jma.go.jp/gmd/risk/obsdl/top/station HTTP/1.1
 Content-Type: application/x-www-form-urlencoded
 
 pd=44
+
+###
+POST https://www.data.jma.go.jp/gmd/risk/obsdl/top/element HTTP/1.1
+Content-Type: application/x-www-form-urlencoded
+
+aggrgPeriod=815&isTypeNumber=1
+
+
+###
+POST /risk/obsdl/show/table HTTP/1.1
+
+stationNumList=%5B%22s47662%22%5D&aggrgPeriod=1&elementNumList=%5B%5B%22401%22%2C%22%22%5D%2C%5B%22201%22%2C%22%22%5D%2C%5B%22202%22%2C%22%22%5D%2C%5B%22203%22%2C%22%22%5D%5D&interAnnualFlag=1&ymdList=%5B%222022%22%2C%222023%22%2C%227%22%2C%227%22%2C%2220%22%2C%2220%22%5D&optionNumList=%5B%5D&downloadFlag=true&rmkFlag=1&disconnectFlag=1&youbiFlag=0&fukenFlag=0&kijiFlag=0&huukouFlag=0&csvFlag=1&jikantaiFlag=0&jikantaiList=%5B1%2C24%5D&ymdLiteral=1&PHPSESSID=l7mm2u0hib00ie790brmb3kii1
