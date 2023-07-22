@@ -2,22 +2,34 @@
 # -*- coding: utf-8 -*-
 """気象庁のサイトから気象データを取得する"""
 
-from typing import Dict, List, Union
-from bs4 import BeautifulSoup, Tag
-import requests
-import pandas as pd
-from io import StringIO
 from datetime import date
-import urllib.request
-import lxml.html
+from io import StringIO
+from typing import Dict, List, Union
 
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup, Tag
 
 WEATHER_COLNAME = ["日", "現地気圧", "海面気圧", "降水量合計", "降水量1時間最大", "降水量10分最大", "平均気温",
-                  "最高気温", "最低気温", "平均湿度", "最小湿度", "平均風速", "最大風速", "最大風向き",
-                  "最大瞬間風速", "最大瞬間風向き", "日照時間", "降雪合計", "最深積雪", "昼天気概況", "夜天気概況"]
+                   "最高気温", "最低気温", "平均湿度", "最小湿度", "平均風速", "最大風速", "最大風向き",
+                   "最大瞬間風速", "最大瞬間風向き", "日照時間", "降雪合計", "最深積雪", "昼天気概況", "夜天気概況"]
 
 # ブラウザでの表表示URL
-TABLEVIEWER_URL = "https://www.data.jma.go.jp/obd/stats/etrn/view/daily_s1.php?prec_no={}&block_no={}&year={}&month={}&day={}&view=p1"
+TABLEVIEWER_URL = "https://www.data.jma.go.jp/obd/stats/etrn/view/daily_s1.php?" \
+                  "prec_no={}&block_no={}&year={}&month={}&day={}&view=p1"
+
+# 観測項目選択HTMLのURL
+ELEMENTS_URL = "https://www.data.jma.go.jp/gmd/risk/obsdl/top/element"
+
+# 観測地点取得URL
+STATION_URL = "https://www.data.jma.go.jp/gmd/risk/obsdl/top/station"
+
+# 観測データダウンロードURL
+CSVDL_URL = "https://www.data.jma.go.jp/gmd/risk/obsdl/show/table"
+
+# 観測データダウンロードページのURL
+DL_INDEX_URL = "https://www.data.jma.go.jp/gmd/risk/obsdl/index.php"
+
 
 def get_weather_from_html(prec_no: int, block_no: int, year: int, month: int, day: int) -> pd.DataFrame:
     """気象データをブラウザ表表表示画面から取得する
@@ -28,7 +40,7 @@ def get_weather_from_html(prec_no: int, block_no: int, year: int, month: int, da
         year (int): 年
         month (int): 月
         day (int): 日
-    
+
     Returns:
         pd.DataFrame: 気象データ
     """
@@ -58,15 +70,12 @@ def get_weather_from_html(prec_no: int, block_no: int, year: int, month: int, da
     return pd.DataFrame(data, columns=WEATHER_COLNAME)
 
 
-STATION_URL = "https://www.data.jma.go.jp/gmd/risk/obsdl/top/station"
-
 def get_prefectures() -> Dict[int, str]:
     """気象庁観測地点情報から観測地域コードのリストを取得
 
     Returns:
         Dict[int, str]: 観測地域コードと都道府県名の辞書
     """
-
     # 気象庁の観測地点リストのURLからデータを取得
     response = requests.get(STATION_URL)
     response.encoding = "utf-8"
@@ -81,17 +90,17 @@ def get_prefectures() -> Dict[int, str]:
     return prefectures
 
 
-def get_stations(pd: int) -> Dict[int, str]:
+def get_stations(pd_: int) -> Dict[int, str]:
     """気象庁の観測地点情報から観測地点コードのリストを取得
 
     Args:
-        pd (int): 観測地域コード
-    
+        pd_ (int): 観測地域コード
+
     Returns:
         Dict[int, str]: 観測地点コードと観測地点情報
     """
     # POSTリクエストを送信
-    response = requests.post(STATION_URL, data={"pd": pd})
+    response = requests.post(STATION_URL, data={"pd": pd_})
     response.encoding = "utf-8"
     # レスポンスを表示
     soup = BeautifulSoup(response.text, "lxml")
@@ -127,35 +136,17 @@ def get_stations(pd: int) -> Dict[int, str]:
         }
 
     parsed = {
-        id: {**parse_hidden(st), **parse_text(st["title"])}
-        for id, st in stations.items()
+        id: {**parse_hidden(station), **parse_text(station["title"])}
+        for id, station in stations.items()
     }
 
-    for st in parsed.values():
-        st.update(kansoku_items(st["kansoku"]))
+    for station in parsed.values():
+        station.update(kansoku_items(station["kansoku"]))
 
     return parsed
 
-# 観測所フラグ調査結果
-#for id, st in stations.items():
-#    if st["地点名"] == "父島":
-#        print(id, st["kansoku"])
-# a1646 100000, "降雨"
-### kansoku[0] = 降雨
-# a1468 111000, "気温", "降雨", "風速"
-# a1509 110000, "降雨", "風速"
-### kansoku[1] = 風速
-### kansoku[2] = 気温
-### a0370 111200, "気温", "降雨", "風速", "日照"
-### s47662 111111, "気温", "降雨", "風速", "日照", "積雪", "その他"
-### kansoku[3] = 日照
-### kansoku[4] = 積雪
-### kansoku[5] = その他
 
-
-ELEMENTS_URL="https://www.data.jma.go.jp/gmd/risk/obsdl/top/element"
-
-def get_aggrgPeriods() -> Dict[int, Dict[str, Union[str, List[int]]]]:
+def get_aggrg_periods() -> Dict[int, Dict[str, Union[str, List[int]]]]:
     """気象庁の観測項目選択ページから観測集計期間のリストを取得
 
     Returns:
@@ -168,7 +159,7 @@ def get_aggrgPeriods() -> Dict[int, Dict[str, Union[str, List[int]]]]:
     response.encoding = "utf-8"
     # レスポンスを表示
     soup = BeautifulSoup(response.text, "lxml")
-    aggrgPeriod = soup.find(id="aggrgPeriod")
+    aggrg_period = soup.find(id="aggrgPeriod")
 
     def parse_periods(parent: Tag) -> Dict[str, Union[str, List[int]]]:
         content = {}
@@ -180,13 +171,13 @@ def get_aggrgPeriods() -> Dict[int, Dict[str, Union[str, List[int]]]]:
         return content
 
     periods = {
-        int(input["value"]): parse_periods(input.parent)
-        for input in aggrgPeriod.find_all("input", {"name": "aggrgPeriod"})
+        int(inp["value"]): parse_periods(inp.parent)
+        for inp in aggrg_period.find_all("input", {"name": "aggrgPeriod"})
     }
     return periods
 
 
-def get_elements(aggrgPeriods: int=1, isTypeNumber: int=1) -> Dict[str, str]:
+def get_elements(aggrg_periods: int=1, is_type_num: int=1) -> Dict[str, str]:
     """気象庁の観測項目選択ページから観測項目のリストを取得
 
     Args:
@@ -194,18 +185,19 @@ def get_elements(aggrgPeriods: int=1, isTypeNumber: int=1) -> Dict[str, str]:
         isTypeNumber (int): 観測項目の種類 (0: 気象要素, 1: 気象要素以外)
 
     Returns:
-        Dict[str, str]: 観測項目IDと観測項目名の辞書     
+        Dict[str, str]: 観測項目IDと観測項目名の辞書
     """
     # POSTリクエストを送信
-    data = {"aggrgPeriod": aggrgPeriods, "isTypeNumber": isTypeNumber}
+    data = {"aggrgPeriod": aggrg_periods, "isTypeNumber": is_type_num}
     response = requests.post(ELEMENTS_URL, data=data)
     response.encoding = "utf-8"
     # レスポンスを表示
     soup = BeautifulSoup(response.text, "lxml")
 
     def parse_items(elem):
-        if "disabled" in elem.attrs: return {}
-        value    = elem["value"]
+        if "disabled" in elem.attrs:
+            return {}
+        value = elem["value"]
         item = {"name": elem["id"]}
         options = elem.parent.find_all("option")
         if options:
@@ -218,18 +210,18 @@ def get_elements(aggrgPeriods: int=1, isTypeNumber: int=1) -> Dict[str, str]:
     items = {}
     # aggrgPeriods が 8XX の場合は期間クラス指定は1文字目 (8) のみ
     # 今のところ、複数桁のケースは 8XX のみ
-    for td in soup.find_all("td", class_="kikan" + str(aggrgPeriods)[0]):
-        input = td.find("input", {"type": "checkbox", "name": "element"})
-        items.update(parse_items(input))
+    for td_ in soup.find_all("td", class_="kikan" + str(aggrg_periods)[0]):
+        inp = td_.find("input", {"type": "checkbox", "name": "element"})
+        items.update(parse_items(inp))
 
     return items
 
 
-def parse_number(s) -> Union[int, float]:
+def parse_number(num_str: str) -> Union[int, float]:
     """文字列を、整数はintに、小数点を含むものはfloatに変換する
 
     Args:
-        s (str): 変換する文字列
+        num_str (str): 変換する文字列
 
     Returns:
         Union[int, float]: 変換後の数値
@@ -238,20 +230,19 @@ def parse_number(s) -> Union[int, float]:
         ValueError: intにもfloatにも変換できない場合
     """
     try:
-        return int(s)
+        return int(num_str)
     except ValueError:
-        return float(s)
+        return float(num_str)
 
 
-CSVDL_URL="https://www.data.jma.go.jp/gmd/risk/obsdl/show/table"
-
-def get_weather_as_csv(phpsessid: str, aggrgPeriod: int, station: str, element: List[int],
+def get_weather_as_csv(phpsessid: str, aggrg_period: int,
+                       station: str, elements: List[int],
                        begin_date: date, end_date: date) -> pd.DataFrame:
     """気象庁の観測データダウンロードページから気象データを取得する
 
     Args:
         phpsessid (str): PHPSESSID
-        aggrgPeriod (int): 観測集計期間ID
+        aggrg_period (int): 観測集計期間ID
         station (str): 観測地点コード
         element (List[int]): 観測項目IDのリスト
         begin_date (date): 取得する期間の開始日
@@ -259,35 +250,36 @@ def get_weather_as_csv(phpsessid: str, aggrgPeriod: int, station: str, element: 
 
     Returns:
         pd.DataFrame: 気象データ
-    
+
     Raises:
         ValueError: 観測項目IDが不正な場合
     """
-    element_str = "[" + ",".join([f'["{elm}",""]' for elm in element]) + "]"
+    element_str = "[" + ",".join([f'["{elm}",""]' for elm in elements]) + "]"
 
     params = {
         "PHPSESSID": phpsessid,
         # 共通フラグ
-        "rmkFlag": 1,        # 利用上注意が必要なデータを格納する
-        "disconnectFlag": 1, # 観測環境の変化にかかわらずデータを格納する
-        "csvFlag": 1,        # すべて数値で格納する
-        "ymdLiteral": 1,     # 日付は日付リテラルで格納する
-        "youbiFlag": 0,      # 日付に曜日を表示する
-        "kijiFlag": 0,       # 最高・最低（最大・最小）値の発生時刻を表示
+        "rmkFlag": 1,         # 利用上注意が必要なデータを格納する
+        "disconnectFlag": 1,  # 観測環境の変化にかかわらずデータを格納する
+        "csvFlag": 1,         # すべて数値で格納する
+        "ymdLiteral": 1,      # 日付は日付リテラルで格納する
+        "youbiFlag": 0,       # 日付に曜日を表示する
+        "kijiFlag": 0,        # 最高・最低（最大・最小）値の発生時刻を表示
         # 時別値データ選択
-        "aggrgPeriod": aggrgPeriod,               # 日別値
-        "stationNumList": f'["{station}"]',      # 観測地点コードのリスト
-        "elementNumList": element_str,           # 項目IDのリスト
-        "ymdList": '["{}", "{}", "{}", "{}", "{}", "{}"]'.format(
-            begin_date.year,  end_date.year,
-            begin_date.month, end_date.month,
-            begin_date.day,   end_date.day),       # 取得する期間
-        "jikantaiFlag": 0,        # 特定の時間帯のみ表示する
-        "jikantaiList": "[1,24]", # デフォルトは全部
-        "interAnnualFlag": 1,     # 連続した期間で表示する
+        "aggrgPeriod": aggrg_period,          # 日別値
+        "stationNumList": f'["{station}"]',   # 観測地点コードのリスト
+        "elementNumList": element_str,        # 項目IDのリスト
+        "ymdList": (                          # 取得する期間
+            f'["{begin_date.year}", "{end_date.year}",'
+            f' "{begin_date.month}", "{end_date.month}",'
+            f' "{begin_date.day}", "{end_date.day}"]'
+        ),
+        "jikantaiFlag": 0,         # 特定の時間帯のみ表示する
+        "jikantaiList": "[1,24]",  # デフォルトは全部
+        "interAnnualFlag": 1,      # 連続した期間で表示する
         # 以下、意味の分からないフラグ類
         "optionNumList": [],
-        "downloadFlag": True,     # CSV としてダウンロードする？
+        "downloadFlag": True,      # CSV としてダウンロードする？
         "huukouFlag": 0,
     }
 
@@ -298,21 +290,26 @@ def get_weather_as_csv(phpsessid: str, aggrgPeriod: int, station: str, element: 
 
 def read_csv(csv_text: str) -> pd.DataFrame:
     """気象庁が出すCSVをDataFrameとして読み込む
+
+    Args:
+        csv_text (str): CSVのテキスト
+
+    Returns:
+        pd.DataFrame: 気象データ
     """
     lines = csv_text.split("\n")
     # print(lines[0])
 
-    df = pd.read_csv(StringIO("".join(lines[2:])), header=[0, 1, 2, 3])
+    df_ = pd.read_csv(StringIO("".join(lines[2:])), header=[0, 1, 2, 3])
 
     # ヘッダーの修正
-    df.columns = df.columns.droplevel([2])
-    df.columns = pd.MultiIndex.from_tuples([(x if 'Unnamed' not in x else '') for x in col] for col in df.columns)
+    df_.columns = df_.columns.droplevel([2])
+    df_.columns = pd.MultiIndex.from_tuples(
+        [(x if 'Unnamed' not in x else '') for x in col] for col in df_.columns)
 
     # print(df.columns)
-    return df
+    return df_
 
-
-DL_INDEX_URL="https://www.data.jma.go.jp/gmd/risk/obsdl/index.php"
 
 def get_phpsessid() -> str:
     """気象庁の観測データダウンロードページからPHPSESSIDを取得する
@@ -320,15 +317,13 @@ def get_phpsessid() -> str:
     Returns:
         str: PHPSESSID
     """
-    xml = urllib.request.urlopen(DL_INDEX_URL).read().decode("utf-8")
-    tree = lxml.html.fromstring(xml)
-    return tree.cssselect("input#sid")[0].value
-   
+    response = requests.get(DL_INDEX_URL)
+    response.encoding = "utf-8"
+
+    soup = BeautifulSoup(response.text, "lxml")
+    return soup.find("input", {"id": "sid"})["value"]
+
 
 if __name__ == "__main__":
-    element = 201
-    station = 47662
-    phpsessid = get_phpsessid()
-
-    download_csv(phpsessid, 2, station, element,
-                 date(2023, 1, 1), date(2023, 6, 31))
+    get_weather_as_csv(get_phpsessid(), 2, "c47662", [201],
+                       date(2023, 1, 1), date(2023, 6, 31))
